@@ -57,10 +57,12 @@ model {
             sources.cpp {
                 source {
                     srcDir 'src/main/cpp'
+                    srcDirs 'src/books/swerve/src/cpp'
                     include '**/*.cpp', '**/*.cc'
                 }
                 exportedHeaders {
                     srcDir 'src/main/include'
+                    srcDirs 'src/books'
                 }
             }
 

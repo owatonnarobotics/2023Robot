@@ -3,15 +3,25 @@
 // the WPILib BSD license file in the root directory of this project.
 
 #include "Robot.h"
+#include <math.h>
 
 #include <fmt/core.h>
 
 #include <frc/smartdashboard/SmartDashboard.h>
+#include <frc/Joystick.h>
+#include <frc/XboxController.h>
+#include <cameraserver/CameraServer.h>
+#include <frc/DigitalInput.h>
+#include <frc/Solenoid.h>
+
+#include "swerve/src/include/SwerveTrain.h"
+#include "controller/Controller.h"
+
+frc::Joystick* playerOne;
+frc::XboxController* playerTwo;
 
 void Robot::RobotInit() {
-  m_chooser.SetDefaultOption(kAutoNameDefault, kAutoNameDefault);
-  m_chooser.AddOption(kAutoNameCustom, kAutoNameCustom);
-  frc::SmartDashboard::PutData("Auto Modes", &m_chooser);
+playerOne = new frc::Joystick(R_controllerPortPlayerOne);
 }
 
 /**
@@ -36,16 +46,9 @@ void Robot::RobotPeriodic() {}
  * make sure to add them to the chooser code above as well.
  */
 void Robot::AutonomousInit() {
-  m_autoSelected = m_chooser.GetSelected();
-  // m_autoSelected = SmartDashboard::GetString("Auto Selector",
-  //     kAutoNameDefault);
-  fmt::print("Auto selected: {}\n", m_autoSelected);
-
-  if (m_autoSelected == kAutoNameCustom) {
-    // Custom Auto goes here
-  } else {
-    // Default Auto goes here
-  }
+    SwerveTrain::GetInstance().ResetHold();
+    // TODO: NEEDS TO CHANGE
+    SwerveTrain::GetInstance().HardwareZero();
 }
 
 void Robot::AutonomousPeriodic() {
@@ -56,13 +59,58 @@ void Robot::AutonomousPeriodic() {
   }
 }
 
-void Robot::TeleopInit() {}
+void Robot::TeleopInit() {
+    SwerveTrain::GetInstance().SetSwerveBrake(true);
+    SwerveTrain::GetInstance().SetDriveBrake(true);
+}
 
-void Robot::TeleopPeriodic() {}
+void Robot::TeleopPeriodic() {
+  if (playerOne->GetRawButton(9) && playerOne->GetRawButton(10)) {
+
+        SwerveTrain::GetInstance().HardwareZero();
+    }
+    if (playerOne->GetRawButton(4)) {
+
+        NavX::GetInstance().Calibrate();
+        NavX::GetInstance().resetYaw();
+    }
+    if (playerOne->GetRawButton(7)) {
+        
+        SwerveTrain::GetInstance().AssumeZeroPosition();
+    }
+    else {
+
+        double x = playerOne->GetX();
+        double y = playerOne->GetY();
+        double z = playerOne->GetZ();
+        Controller::forceControllerXYZToZeroInDeadzone(x, y, z);
+
+        if (playerOne->GetRawButton(2)) {
+
+            frc::SmartDashboard::PutNumber("z", z);
+        }
+        else {
+
+            z *= R_controllerZMultiplier;
+        }
+
+        SwerveTrain::GetInstance().Drive(
+            -x,
+            -y,
+            z,
+            playerOne->GetRawButton(5),
+            playerOne->GetRawButton(3),
+            -(((playerOne->GetThrottle() + 1.0) / 2.0) - 1.0)
+        );
+    }
+}
 
 void Robot::DisabledInit() {}
 
-void Robot::DisabledPeriodic() {}
+void Robot::DisabledPeriodic() {
+  SwerveTrain::GetInstance().SetSwerveBrake(false);
+  SwerveTrain::GetInstance().SetDriveBrake(false);
+}
 
 void Robot::TestInit() {}
 
