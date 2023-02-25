@@ -3,9 +3,11 @@
 // the WPILib BSD license file in the root directory of this project.
 
 #include "Robot.h"
+#include "Claw.h"
+#include "Arm.h"
 #include <math.h>
 
-#include <fmt/core.h>
+#include <fmt/core.h> 
 
 #include <frc/smartdashboard/SmartDashboard.h>
 #include <frc/Joystick.h>
@@ -13,15 +15,44 @@
 #include <cameraserver/CameraServer.h>
 #include <frc/DigitalInput.h>
 #include <frc/Solenoid.h>
-
+#include "limelight/Limelight.h"
 #include "swerve/src/include/SwerveTrain.h"
 #include "controller/Controller.h"
+#include "commonauto/AutoSequence.h"
+#include "commonauto/steps/WaitSeconds.h"
+#include "commonauto/steps/TimeDriveHold.h"
+#include "commonauto/steps/TurnToAbsoluteAngle.h"
+#include "commonauto/steps/Stop.h"
+#include "commonauto/steps/ResetNavXYaw.h"
+#include "commonauto/steps/CalibrateNavXThenReset.h"
+#include "Auto/SetArm.h"
+#include "Auto/SetArm2.h"
+#include "Auto/SetClaw.h"
+#include "Auto/SetClaw2.h"
+#include "Auto/SwitchPneumatics.h"
+
 
 frc::Joystick* playerOne;
 frc::XboxController* playerTwo;
+AutoSequence* bigSequence;
+frc::SendableChooser<std::string>* autoChooser;
 
 void Robot::RobotInit() {
 playerOne = new frc::Joystick(R_controllerPortPlayerOne);
+playerTwo = new frc::XboxController(R_controllerPortPlayerTwo);
+frc::SmartDashboard::PutNumber("Distance of the Arm Acuator", .35);
+frc::SmartDashboard::PutNumber("Distance of the Claw Acuator", .15);
+frc::CameraServer::StartAutomaticCapture();
+
+autoChooser = new frc::SendableChooser<std::string>;
+autoChooser->AddOption("one cone", "one cone");
+autoChooser->AddOption("cube and platform", "cp");
+autoChooser->AddOption("two ball sides", "2bs");
+autoChooser->SetDefaultOption("tri-ball", "tb");
+frc::SmartDashboard::PutData(autoChooser);
+
+bigSequence = new AutoSequence(false);
+bigSequence->EnableLogging();
 }
 
 /**
@@ -47,16 +78,59 @@ void Robot::RobotPeriodic() {}
  */
 void Robot::AutonomousInit() {
     SwerveTrain::GetInstance().ResetHold();
-    // TODO: NEEDS TO CHANGE
     SwerveTrain::GetInstance().HardwareZero();
+    bigSequence->Reset();
+
+    std::string selectedAuto = autoChooser->GetSelected();
+    
+    if (selectedAuto == "one cone") {
+    bigSequence->AddStep(new CalibrateNavXThenReset);
+    bigSequence->AddStep(new WaitSeconds(1));
+    bigSequence->AddStep(new ResetNavXYaw);
+
+
+    bigSequence->AddStep(new SetArm2(.5));
+    bigSequence->AddStep(new SetClaw2(.3));
+    //bigSequence->AddStep(new WaitSeconds(.75));
+    //bigSequence->AddStep(new TimeDriveHold(0, .25, 2));
+    bigSequence->AddStep(new SwitchPneumatics());
+    bigSequence->AddStep(new WaitSeconds(.5));
+    bigSequence->AddStep(new TimeDriveHold(0, -.5, 3.5));
+    SwerveTrain::GetInstance().SetSwerveBrake(true);
+    SwerveTrain::GetInstance().SetDriveBrake(true);
+
+    bigSequence->AddStep(new WaitSeconds(20));
+    }
+    else if(selectedAuto == "cp"){
+      bigSequence->AddStep(new CalibrateNavXThenReset);
+      bigSequence->AddStep(new WaitSeconds(1));
+      bigSequence->AddStep(new ResetNavXYaw);
+
+
+      bigSequence->AddStep(new SetArm2(.45));
+      bigSequence->AddStep(new SetClaw2(.3));
+      //bigSequence->AddStep(new WaitSeconds(.75));
+      //bigSequence->AddStep(new TimeDriveHold(0, .25, 2));
+      bigSequence->AddStep(new SwitchPneumatics());
+      bigSequence->AddStep(new WaitSeconds(.5));
+      bigSequence->AddStep(new SetClaw(1));
+      bigSequence->AddStep(new SetArm(1));
+      bigSequence->AddStep(new TimeDriveHold(0, -.75, 2.5));
+    }
+    bigSequence->AddStep(new Stop);
+    bigSequence->Init();
+
+
 }
 
 void Robot::AutonomousPeriodic() {
-  if (m_autoSelected == kAutoNameCustom) {
+  /* if (m_autoSelected == kAutoNameCustom) {
     // Custom Auto goes here
   } else {
     // Default Auto goes here
-  }
+  } */
+  bigSequence->Execute();
+  
 }
 
 void Robot::TeleopInit() {
@@ -103,7 +177,39 @@ void Robot::TeleopPeriodic() {
             -(((playerOne->GetThrottle() + 1.0) / 2.0) - 1.0)
         );
     }
+
+  if(playerTwo->GetAButtonPressed()){
+    Arm::GetInstance().ArmSetPosition(frc::SmartDashboard::GetNumber("Distance of the Arm Acuator", .35));
+  }
+  else if(playerTwo->GetLeftTriggerAxis() > .25){
+    Arm::GetInstance().ArmSpeed(playerTwo->GetLeftTriggerAxis()); // arm up
+  }
+  else if(playerTwo->GetRightTriggerAxis() > .25){
+    Arm::GetInstance().ArmSpeed(-playerTwo->GetRightTriggerAxis()); // arm down
+  }
+  else{
+    Arm::GetInstance().ArmSpeed(0);
+  }
+
+  if(playerTwo->GetBackButton()){
+    Arm::GetInstance().ArmSetPosition(frc::SmartDashboard::GetNumber("Distance of the Claw Acuator", .15));
+  }
+  else if(playerTwo->GetRightBumper()){
+
+    Claw::GetInstance().ClawTiltSpeed(-1); // claw tilt up
+  }
+  else if(playerTwo->GetLeftBumper()){
+    Claw::GetInstance().ClawTiltSpeed(1); // claw tilt down
+  }
+  else{
+    Claw::GetInstance().ClawTiltSpeed(0);
+  }
+  
+  if(playerTwo->GetYButtonPressed()){
+    Claw::GetInstance().SwitchPneumatics();
+  }
 }
+
 
 void Robot::DisabledInit() {}
 
